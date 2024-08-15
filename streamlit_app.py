@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import open_clip
 import clip
 import torch
 from PIL import Image
@@ -15,7 +16,11 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
 # Load the model
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model, preprocess = clip.load('ViT-B/32', device)
+# model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k')
+# model, _, preprocess = open_clip.create_model_and_transforms('ViT-L-14', pretrained='laion2b_s32b_b82k')
+model, _, preprocess = open_clip.create_model_and_transforms('ViT-H-14', pretrained='laion2b_s32b_b79k') 
+model.eval()
+tokenizer = open_clip.get_tokenizer('ViT-B-32')
 
 def process_image(image_path):
     # Load the image
@@ -24,7 +29,7 @@ def process_image(image_path):
 
     # Preprocess the image
     image_input = preprocess(image).unsqueeze(0).to(device)
-    text_inputs = torch.cat([clip.tokenize(f"a photo of a {c}") for c in cifar100.classes]).to(device)
+    text_inputs = tokenizer([f'a photo of a {c}' for c in cifar100.classes]).to(device)
 
     # Calculate features
     with torch.no_grad():
@@ -76,59 +81,7 @@ def process_image_labels(image_path, labels):
 
     # Preprocess the image
     image_input = preprocess(image).unsqueeze(0).to(device)
-    text_inputs = torch.cat([clip.tokenize(f"a photo of a {c}") for c in labels]).to(device)
-
-    # Calculate features
-    with torch.no_grad():
-        image_features = model.encode_image(image_input)
-        text_features = model.encode_text(text_inputs)
-
-    # Pick the top 5 most similar labels for the image
-    image_features /= image_features.norm(dim=-1, keepdim=True)
-    text_features /= text_features.norm(dim=-1, keepdim=True)
-    similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-
-    values, indices = similarity[0].topk(len(labels))
-    top_probs, top_labels = similarity.topk(len(labels), dim=-1)
-
-    # Print the result
-    print("\nTop predictions:\n")
-    for value, index in zip(values, indices):
-        print(f"{labels[index]:>16s}: {100 * value.item():.2f}%")
-
-    # Empty lists to store the results
-    class_names = []
-    percentages = []
-
-    # Iterate over values and indices
-    for value, index in zip(values, indices):
-        # Get the class name and percentage
-        class_name = labels[index]
-        percentage = 100 * value.item()
-
-        # Append to the lists
-        class_names.append(class_name)
-        percentages.append(percentage)
-
-    # Create the DataFrame
-    df = pd.DataFrame({
-        'Class Name': class_names,
-        'Percentage': percentages
-    })
-
-    # Sort the DataFrame by Percentage
-    df = df.sort_values(by='Percentage', ascending=False)
-
-    return df
-
-def process_image_labels_binary(image_path, labels):
-    # Load the image
-    image = Image.open(image_path)
-    image_width = 450
-
-    # Preprocess the image
-    image_input = preprocess(image).unsqueeze(0).to(device)
-    text_inputs = torch.cat([clip.tokenize(f"a photo of a {c}") for c in labels]).to(device)
+    text_inputs = tokenizer([f'a photo of a {c}' for c in labels]).to(device)
 
     # Calculate features
     with torch.no_grad():
@@ -276,7 +229,8 @@ grid_image, grid_predictions = st.columns([3,3])
 with grid_image:
     example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
     st.markdown(example_text_1, unsafe_allow_html=True)
-    st.image(image, caption='Pre-loaded Image', width=image_width)
+    # st.image(image, caption='Pre-loaded Image', width=image_width)
+    st.image(image, caption='Pre-loaded Image', use_column_width='always')
 
 with grid_predictions:
     example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions &#127919;</p>'
@@ -320,7 +274,8 @@ if uploaded_file_example_1 is not None:
     with grid_image:
         example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
         st.markdown(example_text_1, unsafe_allow_html=True)
-        st.image(image_user, caption='Uploaded Image', width=image_width)
+        # st.image(image_user, caption='Uploaded Image', width=image_width)
+        st.image(image_user, caption='Uploaded Image', use_column_width='always')
     with grid_predictions:
         result = process_image(file_path)
         example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions &#127919;</p>'
@@ -347,15 +302,17 @@ st.markdown(original_title_text_2, unsafe_allow_html=True)
 st.divider()
 
 # UI - Original image and predictions (pre-loaded image)
-grid_image, grid_space, grid_predictions_1, grid_predictions_2 = st.columns([3,1,3,3])
+# grid_image, grid_space, grid_predictions_1, grid_predictions_2 = st.columns([3,1,3,3])
+grid_image, grid_predictions_1, grid_predictions_2 = st.columns([4,2,2])
 
 result_df_labels_1 = process_image_labels(image_path_2, labels=['wildfires', 'drought', 'pollution', 'deforestation', 'flood'])
-result_df_labels_2 = process_image_labels_binary(image_path_2, labels=['Yes', 'No'])
+result_df_labels_2 = process_image_labels(image_path_2, labels=['Yes', 'No'])
 
 with grid_image:
     example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
     st.markdown(example_text_1, unsafe_allow_html=True)
-    st.image(image_2, caption='Pre-loaded Image', width=image_width)
+    # st.image(image_2, caption='Pre-loaded Image', width=image_width)
+    st.image(image_2, caption='Pre-loaded Image', use_column_width='always')
 
 with grid_predictions_1:
     example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions (Multi label) &#127919;</p>'
@@ -409,7 +366,8 @@ if uploaded_file_example_2 is not None:
     with grid_image:
         example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
         st.markdown(example_text_1, unsafe_allow_html=True)
-        st.image(image_user_example_2, caption='Uploaded Image', width=image_width)
+        # st.image(image_user_example_2, caption='Uploaded Image', width=image_width)
+        st.image(image_user_example_2, caption='Uploaded Image', use_column_width='always')
     with grid_predictions:
         if labels_user:
             example_text_3 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions &#127919;</p>'

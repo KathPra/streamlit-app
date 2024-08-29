@@ -14,14 +14,6 @@ import tempfile
 # Set the environment variable
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
-# Load the model
-device = "cuda" if torch.cuda.is_available() else "cpu"
-# model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k')
-# model, _, preprocess = open_clip.create_model_and_transforms('ViT-L-14', pretrained='laion2b_s32b_b82k')
-model, _, preprocess = open_clip.create_model_and_transforms('ViT-H-14', pretrained='laion2b_s32b_b79k') 
-model.eval()
-tokenizer = open_clip.get_tokenizer('ViT-B-32')
-
 def process_image(image_path):
     # Load the image
     image = Image.open(image_path)
@@ -126,6 +118,61 @@ def process_image_labels(image_path, labels):
 
     return df
 
+def process_image_labels_binary(image_path, question_prompt):
+    # Load the image
+    image = Image.open(image_path)
+    image_width = 450
+
+    # Preprocess the image
+    image_input = preprocess(image).unsqueeze(0).to(device)
+    labels = ['Yes.', 'No.']
+    # Use a general text prompt as a baseline
+    text_prompts = [question_prompt, 'Does this image have something?']
+    text_inputs = tokenizer(text_prompts).to(device)
+
+    # Calculate features
+    with torch.no_grad():
+        image_features = model.encode_image(image_input)
+        text_features = model.encode_text(text_inputs)
+
+    # Pick the top 5 most similar labels for the image
+    image_features /= image_features.norm(dim=-1, keepdim=True)
+    text_features /= text_features.norm(dim=-1, keepdim=True)
+    similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
+
+    values, indices = similarity[0].topk(len(labels))
+    top_probs, top_labels = similarity.topk(len(labels), dim=-1)
+
+    # Print the result
+    print("\nTop predictions:\n")
+    for value, index in zip(values, indices):
+        print(f"{labels[index]:>16s}: {100 * value.item():.2f}%")
+
+    # Empty lists to store the results
+    class_names = []
+    percentages = []
+
+    # Iterate over values and indices
+    for value, index in zip(values, indices):
+        # Get the class name and percentage
+        class_name = labels[index]
+        percentage = 100 * value.item()
+
+        # Append to the lists
+        class_names.append(class_name)
+        percentages.append(percentage)
+
+    # Create the DataFrame
+    df = pd.DataFrame({
+        'Class Name': class_names,
+        'Percentage': percentages
+    })
+
+    # Sort the DataFrame by Percentage
+    df = df.sort_values(by='Percentage', ascending=False)
+
+    return df
+
 ############################################################################################################
 # Load the CIFAR-100 dataset
 ############################################################################################################
@@ -157,13 +204,52 @@ with st.sidebar:
      sidebar_title = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 15px; letter-spacing: -0.005em; line-height: 1.5;">This page is part of the ClimateVision project, academic initiative between the Technical University of Munich and the University of Mannheim. This project is founding by the Bundesministerium für Bildung und Forschung and the European Union. If you want to know more about the project, please check our website <a href="https://web.informatik.uni-mannheim.de/climatevisions/">here.</a></p>'
      st.markdown(sidebar_title, unsafe_allow_html=True)
 
+############################################################################################################
+# UI - Header
+############################################################################################################
 
 icon.show_icon(":desktop_computer:")
 
 st.header(":blue[Welcome to ClimateVision Project! 👋]")
-original_header = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 17px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">This page provides users with the ability to upload an image and receive predictions from the CLIP model developed by OpenAI. The CLIP model, short for "Contrastive Language-Image Pre-training," is a powerful artificial intelligence model capable of understanding both images and text. Using this model, the application predicts the class or content depicted in the uploaded image based on its visual features and any accompanying text description. By leveraging the CLIP model`s unique ability to analyze images in conjunction with text, users can gain insights into what the model perceives from both modalities, offering a richer understanding of the image content.</p>'
+original_header = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 17px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">This page provides users with the ability to upload an image and receive predictions from OpenCLIP model, an open-source implementation of OpenAI\'s CLIP model. The CLIP model, short for "Contrastive Language-Image Pre-training," is a powerful artificial intelligence model capable of understanding both images and text. Using this model, the application predicts the class or content depicted in the uploaded image based on its visual features and any accompanying text description. By leveraging the CLIP model`s unique ability to analyze images in conjunction with text, users can gain insights into what the model perceives from both modalities, offering a richer understanding of the image content.</p>'
 st.markdown(original_header, unsafe_allow_html=True)
 
+st.markdown('<br></br>', unsafe_allow_html=True)
+
+############################################################################################################
+# UI - Pre-trained model selection
+############################################################################################################
+
+model_selection_title = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 25px; font-weight: 600; letter-spacing: -0.005em; line-height: 1.2;">Pre-trained model selection</p>'
+st.markdown(model_selection_title, unsafe_allow_html=True)
+model_selection_header = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 17px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">The OpenCLIP model is a versatile tool that comes with various backbones, each trained on different datasets. These backbones provide different levels of accuracy, speed, and generalization, depending on your needs.</p>'
+st.markdown(model_selection_header, unsafe_allow_html=True)
+
+# Pre-trained models that are supported
+model_options = ['ViT-B-32', 'ViT-L-14', 'ViT-H-14']
+selected_option = st.selectbox('', model_options)
+
+############################################################################################################
+# Model selection
+############################################################################################################
+
+# Load the model
+device = "cuda" if torch.cuda.is_available() else "cpu"
+# open_clip.list_pretrained()
+if selected_option == 'ViT-B-32':
+    model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k')
+    tokenizer = open_clip.get_tokenizer('ViT-B-32')
+if selected_option == 'ViT-L-14':
+    model, _, preprocess = open_clip.create_model_and_transforms('ViT-L-14', pretrained='laion2b_s32b_b82k')
+    tokenizer = open_clip.get_tokenizer('ViT-L-14')
+if selected_option == 'ViT-H-14':
+    model, _, preprocess = open_clip.create_model_and_transforms('ViT-H-14', pretrained='laion2b_s32b_b79k') 
+    tokenizer = open_clip.get_tokenizer('ViT-H-14')
+model.eval()
+
+############################################################################################################
+# UI - User input and predictions # USER EXAMPLE 1
+############################################################################################################
 
 #st.info("""
 #This page allows the user to upload an image and get predictions from the model. 
@@ -306,7 +392,7 @@ st.divider()
 grid_image, grid_predictions_1, grid_predictions_2 = st.columns([4,2,2])
 
 result_df_labels_1 = process_image_labels(image_path_2, labels=['wildfires', 'drought', 'pollution', 'deforestation', 'flood'])
-result_df_labels_2 = process_image_labels(image_path_2, labels=['Yes', 'No'])
+result_df_labels_2 = process_image_labels_binary(image_path_2, question_prompt='Does the image represent a flood?')
 
 with grid_image:
     example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
@@ -373,7 +459,10 @@ if uploaded_file_example_2 is not None:
             example_text_3 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions &#127919;</p>'
             st.markdown(example_text_3, unsafe_allow_html=True)
             labels_user_list = [label.strip() for label in labels_user.split(',')]
-            result_df_labels_3 = process_image_labels(file_path, labels=labels_user_list)
+            if len(labels_user_list) == 1:
+                result_df_labels_3 = process_image_labels_binary(file_path, question_prompt=labels_user_list[0])
+            else:
+                result_df_labels_3 = process_image_labels(file_path, labels=labels_user_list)
             st.dataframe(result_df_labels_3.style.background_gradient(cmap='Blues'))
         else:
             st.info("Please enter one or multiple labels (separated by comma).")

@@ -118,7 +118,7 @@ def process_image_labels(image_path, labels):
 
     return df
 
-def process_image_labels_binary(image_path, question_prompt):
+def process_image_labels_binary(image_path, label):
     # Load the image
     image = Image.open(image_path)
     image_width = 450
@@ -127,7 +127,7 @@ def process_image_labels_binary(image_path, question_prompt):
     image_input = preprocess(image).unsqueeze(0).to(device)
     labels = ['Yes.', 'No.']
     # Use a general text prompt as a baseline
-    text_prompts = [question_prompt, 'Does this image have something?']
+    text_prompts = [f'Does this image contain {label}?', 'Does this image have something?']
     text_inputs = tokenizer(text_prompts).to(device)
 
     # Calculate features
@@ -211,7 +211,7 @@ with st.sidebar:
 icon.show_icon(":desktop_computer:")
 
 st.header(":blue[Welcome to ClimateVision Project! 👋]")
-original_header = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 17px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">This page provides users with the ability to upload an image and receive predictions from OpenCLIP model, an open-source implementation of OpenAI\'s CLIP model. The CLIP model, short for "Contrastive Language-Image Pre-training," is a powerful artificial intelligence model capable of understanding both images and text. Using this model, the application predicts the class or content depicted in the uploaded image based on its visual features and any accompanying text description. By leveraging the CLIP model`s unique ability to analyze images in conjunction with text, users can gain insights into what the model perceives from both modalities, offering a richer understanding of the image content.</p>'
+original_header = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 18px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">This page provides users with the ability to upload an image and receive predictions from OpenCLIP model, an open-source implementation of OpenAI\'s CLIP model. The CLIP model, short for "Contrastive Language-Image Pre-training," is a powerful artificial intelligence model capable of understanding both images and text. Using this model, the application predicts the class or content depicted in the uploaded image based on its visual features and any accompanying text description. By leveraging the CLIP model`s unique ability to analyze images in conjunction with text, users can gain insights into what the model perceives from both modalities, offering a richer understanding of the image content.</p>'
 st.markdown(original_header, unsafe_allow_html=True)
 
 st.markdown('<br></br>', unsafe_allow_html=True)
@@ -222,11 +222,11 @@ st.markdown('<br></br>', unsafe_allow_html=True)
 
 model_selection_title = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 25px; font-weight: 600; letter-spacing: -0.005em; line-height: 1.2;">Pre-trained model selection</p>'
 st.markdown(model_selection_title, unsafe_allow_html=True)
-model_selection_header = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 17px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">The OpenCLIP model is a versatile tool that comes with various backbones, each trained on different datasets. These backbones provide different levels of accuracy, speed, and generalization, depending on your needs.</p>'
+model_selection_header = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 18px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">OpenCLIP is pre-trained on the LAION-2B dataset, a massive dataset of image-text pairs, specifically designed to help train models that understand both visuals and text. You\'ll have three options for the visual backbone: ViT-B, ViT-L, and ViT-H. If you\'re looking for better performance, especially with more complex images, the larger backbones (ViT-L and ViT-H) can capture more detail and improve accuracy.</p>'
 st.markdown(model_selection_header, unsafe_allow_html=True)
 
 # Pre-trained models that are supported
-model_options = ['ViT-B-32', 'ViT-L-14', 'ViT-H-14']
+model_options = ['ViT-B', 'ViT-L', 'ViT-H']
 selected_option = st.selectbox('', model_options)
 
 ############################################################################################################
@@ -236,13 +236,13 @@ selected_option = st.selectbox('', model_options)
 # Load the model
 device = "cuda" if torch.cuda.is_available() else "cpu"
 # open_clip.list_pretrained()
-if selected_option == 'ViT-B-32':
+if selected_option == 'ViT-B':
     model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k')
     tokenizer = open_clip.get_tokenizer('ViT-B-32')
-if selected_option == 'ViT-L-14':
+if selected_option == 'ViT-L':
     model, _, preprocess = open_clip.create_model_and_transforms('ViT-L-14', pretrained='laion2b_s32b_b82k')
     tokenizer = open_clip.get_tokenizer('ViT-L-14')
-if selected_option == 'ViT-H-14':
+if selected_option == 'ViT-H':
     model, _, preprocess = open_clip.create_model_and_transforms('ViT-H-14', pretrained='laion2b_s32b_b79k') 
     tokenizer = open_clip.get_tokenizer('ViT-H-14')
 model.eval()
@@ -260,7 +260,7 @@ st.markdown('<br></br>', unsafe_allow_html=True)
 original_title = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 25px; font-weight: 600; letter-spacing: -0.005em; line-height: 1.2;">Model example 1: A photo of a climate change</p>'
 st.markdown(original_title, unsafe_allow_html=True)
 
-original_title_text_1 = '<p style="font-family:Source Sans Pro; color:black; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">The following example provide a glance on how CLIP Model works to label a climate change image, based on its trained data.</p>'
+original_title_text_1 = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 18px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">The following example provide a glance on how CLIP Model works to label a climate change image.</p>'
 st.markdown(original_title_text_1, unsafe_allow_html=True)
 st.divider()
 
@@ -280,24 +280,24 @@ th_props = [
   ('background-color', 'blue'),
   ('padding', '5px 10px'),
   ('box-shadow', '0 0 20px rgba(0, 0, 0, 0.15)')
-  ]
+]
                                
 td_props = [
   ('font-size', '17px'),
   ('text-align', 'center')
-  ]
+]
 
 table_props = [
   ('border', '1px solid #6d6d6d'),
   ('border-radius', '30px'),
   ('overflow', 'hidden')
-  ]
+]
                                  
 styles_dict = [
   dict(selector="th", props=th_props),
   dict(selector="td", props=td_props),
   dict(selector="table", props=table_props)
-  ]
+]
 
 ############################################################################################################
 # Prepare the inputs -- EXAMPLE 1
@@ -337,7 +337,7 @@ st.divider()
 
 user_example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Upload your own Image! &#128247;</p>'
 st.markdown(user_example_text_1, unsafe_allow_html=True)
-user_example_text_2 = '<p style="font-family:Source Sans Pro; color:black; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Now you can test the model using your own image data, and see how the model detect the different elements on your image.</p>'
+user_example_text_2 = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 18px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">Now you can test the model with your image and see how it detects the elements.</p>'
 st.markdown(user_example_text_2, unsafe_allow_html=True)
 
 uploaded_file_example_1  = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"], key="1")
@@ -383,16 +383,16 @@ image_path_2 = 'climate_image_2.jpeg'
 original_title_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 25px; font-weight: 600; letter-spacing: -0.005em; line-height: 1.2;">Model example 2: A photo of a climate change (Defining input labels)</p>'
 st.markdown(original_title_2, unsafe_allow_html=True)
 
-original_title_text_2 = '<p style="font-family:Source Sans Pro; color:black; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">The following example provide a glance on how CLIP Model works to label a climate change image, based on labels defined by the researcher.</p>'
+original_title_text_2 = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 18px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">The following example provide a glance on how CLIP Model works to label a climate change image, based on labels defined by the researcher.</p>'
 st.markdown(original_title_text_2, unsafe_allow_html=True)
 st.divider()
 
 # UI - Original image and predictions (pre-loaded image)
 # grid_image, grid_space, grid_predictions_1, grid_predictions_2 = st.columns([3,1,3,3])
-grid_image, grid_predictions_1, grid_predictions_2 = st.columns([4,2,2])
+grid_image, grid_predictions_1, grid_predictions_2 = st.columns([3,3,3])
 
-result_df_labels_1 = process_image_labels(image_path_2, labels=['wildfires', 'drought', 'pollution', 'deforestation', 'flood'])
-result_df_labels_2 = process_image_labels_binary(image_path_2, question_prompt='Does the image represent a flood?')
+result_df_labels_1 = process_image_labels_binary(image_path_2, 'flood')
+result_df_labels_2 = process_image_labels(image_path_2, labels=['wildfires', 'drought', 'pollution', 'deforestation', 'flood'])
 
 with grid_image:
     example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
@@ -401,16 +401,17 @@ with grid_image:
     st.image(image_2, caption='Pre-loaded Image', use_column_width='always')
 
 with grid_predictions_1:
-    example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions (Multi label) &#127919;</p>'
+    example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Single-Label Predictions &#127919;</p>'
     st.markdown(example_text_2, unsafe_allow_html=True)
     st.dataframe(result_df_labels_1.style.background_gradient(cmap='Blues'))
-    st.info("""For this example we defined the following labels: wildfires, drought, pollution, deforestation, and flood.""")
+    st.info("""In this example, we input the single label 'flood.' The model responds with either 'yes' or 'no' based on whether the image contains a flood.""")
 
 with grid_predictions_2:
-    example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions (One label) &#127919;</p>'
+    example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Multi-Label Predictions &#127919;</p>'
     st.markdown(example_text_2, unsafe_allow_html=True)
     st.dataframe(result_df_labels_2.style.background_gradient(cmap='Blues'))
-    st.info("""For this example we ask the following question: Does the image represent a flood?""")
+    st.info("""In this example, we define the labels 'wildfires', 'drought', 'pollution', 'deforestation', and 'flood'. The model evaluates the image and returns the likelihood that it matches each label.""")
+
 st.divider()
 
 
@@ -421,7 +422,7 @@ st.divider()
 # UI - User input and predictions
 user_example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Upload your own Image! &#128247;</p>'
 st.markdown(user_example_text_1, unsafe_allow_html=True)
-user_example_text_2 = '<p style="font-family:Source Sans Pro; color:black; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Now you can test the model using your own image data, and see how the model detect the different elements on your image.</p>'
+user_example_text_2 = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 18px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">Now you can test the model with your image and see how it detects the elements.</p>'
 st.markdown(user_example_text_2, unsafe_allow_html=True)
 
 uploaded_file_example_2 = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"], key="2")
@@ -432,10 +433,11 @@ st.write("Please upload an image. :point_up:")
 
 grid_text_1, grid_text_2 = st.columns([3,3])
 with grid_text_1:
-    user_example_text_3 = '<p style="font-family:Source Sans Pro; color:black; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Now you can define either one or a set of labels to classify your image: &#128073;</p>'
-    st.markdown(user_example_text_3, unsafe_allow_html=True)
+    # user_example_text_3 = '<p style="font-family:Source Sans Pro; color:black; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Now you can define either one or a set of labels to classify your image: &#128073;</p>'
+    # st.markdown(user_example_text_3, unsafe_allow_html=True)
+    st.write("Now you can define either one or a set of labels to classify your image. :point_right:")
 with grid_text_2:
-    labels_user = st.text_input('Enter one or multiple labels (separated by comma).')
+    labels_user = st.text_input('Please enter one or more labels. If entering multiple labels, separate them with commas.')
 
 grid_image, grid_predictions = st.columns([3,3])
 
@@ -460,12 +462,12 @@ if uploaded_file_example_2 is not None:
             st.markdown(example_text_3, unsafe_allow_html=True)
             labels_user_list = [label.strip() for label in labels_user.split(',')]
             if len(labels_user_list) == 1:
-                result_df_labels_3 = process_image_labels_binary(file_path, question_prompt=labels_user_list[0])
+                result_df_labels_3 = process_image_labels_binary(file_path, labels_user_list[0])
             else:
                 result_df_labels_3 = process_image_labels(file_path, labels=labels_user_list)
             st.dataframe(result_df_labels_3.style.background_gradient(cmap='Blues'))
         else:
-            st.info("Please enter one or multiple labels (separated by comma).")
+            st.info("Please enter one or more labels. If entering multiple labels, separate them with commas.")
 else:
     st.write("")
 

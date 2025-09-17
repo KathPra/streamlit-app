@@ -1,19 +1,60 @@
 import streamlit as st
 import os
 import open_clip
-import clip
 import torch
 from PIL import Image
-from torchvision.datasets import CIFAR100
 import matplotlib.pyplot as plt
 import pandas as pd
 from utils import icon
 import tempfile
+import hashlib
+import io
 # from streamlit_option_menu import option_menu
 
 # Set the environment variable
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
+@st.cache_resource
+def load_model(selected_option):
+    if selected_option == 'ViT-B':
+        model, _, preprocess = open_clip.create_model_and_transforms(
+            'ViT-B-32', pretrained='laion2b_s34b_b79k')
+        tokenizer = open_clip.get_tokenizer('ViT-B-32')
+    elif selected_option == 'ViT-L':
+        model, _, preprocess = open_clip.create_model_and_transforms(
+            'ViT-L-14', pretrained='laion2b_s32b_b82k')
+        tokenizer = open_clip.get_tokenizer('ViT-L-14')
+    else:
+        model, _, preprocess = open_clip.create_model_and_transforms(
+            'ViT-H-14', pretrained='laion2b_s32b_b79k')
+        tokenizer = open_clip.get_tokenizer('ViT-H-14')
+    model.eval()
+    return model, preprocess, tokenizer
+
+
+def hash_bytes(file_bytes):
+    return hashlib.md5(file_bytes).hexdigest()
+
+@st.cache_data
+def process_uploaded_image(file_bytes, _model, _preprocess, _text_features, device):
+    """Classify an uploaded image against CIFAR-100 labels."""
+    key = hash_bytes(file_bytes)
+    image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+    image_input = _preprocess(image).unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        image_features = _model.encode_image(image_input)
+        image_features /= image_features.norm(dim=-1, keepdim=True)
+        similarity = (100.0 * image_features @ _text_features.T).softmax(dim=-1)
+
+    values, indices = similarity[0].topk(5)
+    class_names = [cifar100_classes[i] for i in indices]
+    percentages = [100 * v.item() for v in values]
+
+    return pd.DataFrame({"Class Name": class_names, "Percentage": percentages})
+
+
+@st.cache_data
 def process_image(image_path):
     # Load the image
     image = Image.open(image_path)
@@ -21,7 +62,7 @@ def process_image(image_path):
 
     # Preprocess the image
     image_input = preprocess(image).unsqueeze(0).to(device)
-    text_inputs = tokenizer([f'a photo of a {c}' for c in cifar100.classes]).to(device)
+    text_inputs = tokenizer([f'a photo of a {c}' for c in cifar100_classes]).to(device)
 
     # Calculate features
     with torch.no_grad():
@@ -39,7 +80,7 @@ def process_image(image_path):
     # Print the result
     print("\nTop predictions:\n")
     for value, index in zip(values, indices):
-        print(f"{cifar100.classes[index]:>16s}: {100 * value.item():.2f}%")
+        print(f"{cifar100_classes[index]:>16s}: {100 * value.item():.2f}%")
 
     # Empty lists to store the results
     class_names = []
@@ -48,7 +89,7 @@ def process_image(image_path):
     # Iterate over values and indices
     for value, index in zip(values, indices):
         # Get the class name and percentage
-        class_name = cifar100.classes[index]
+        class_name = cifar100_classes[index]
         percentage = 100 * value.item()
 
         # Append to the lists
@@ -173,20 +214,35 @@ def process_image_labels_binary(image_path, label):
 
     return df
 
+
+
+@st.cache_resource
+def get_cifar100_text_features(_model, _tokenizer, device, class_list):
+    text_inputs = _tokenizer([f'a photo of a {c}' for c in class_list]).to(device)
+    with torch.no_grad():
+        text_features = _model.encode_text(text_inputs)
+        text_features /= text_features.norm(dim=-1, keepdim=True)
+    return text_features
+
 ############################################################################################################
-# Load the CIFAR-100 dataset
+# Load the CIFAR-100 classes
 ############################################################################################################
 
-# Download the dataset
-cifar100 = CIFAR100(root=os.path.expanduser("~/.cache"), download=True, train=False)
 
+cifar100_classes = ['apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee', 'beetle', 'bicycle', 'bottle', 'bowl', 'boy', 'bridge', 'bus', 'butterfly', 
+                    'camel', 'can', 'castle', 'caterpillar', 'cattle', 'chair', 'chimpanzee', 'clock', 'cloud', 'cockroach', 'couch', 'crab', 'crocodile', 'cup', 
+                    'dinosaur', 'dolphin', 'elephant', 'flatfish', 'forest', 'fox', 'girl', 'hamster', 'house', 'kangaroo', 'keyboard', 'lamp', 'lawn_mower', 'leopard',
+                     'lion', 'lizard', 'lobster', 'man', 'maple_tree', 'motorcycle', 'mountain', 'mouse', 'mushroom', 'oak_tree', 'orange', 'orchid', 'otter', 'palm_tree', 
+                     'pear', 'pickup_truck', 'pine_tree', 'plain', 'plate', 'poppy', 'porcupine', 'possum', 'rabbit', 'raccoon', 'ray', 'road', 'rocket', 'rose', 'sea', 'seal', 
+                     'shark', 'shrew', 'skunk', 'skyscraper', 'snail', 'snake', 'spider', 'squirrel', 'streetcar', 'sunflower', 'sweet_pepper', 'table', 'tank', 'telephone', 
+                     'television', 'tiger', 'tractor', 'train', 'trout', 'tulip', 'turtle', 'wardrobe', 'whale', 'willow_tree', 'wolf', 'woman', 'worm']
 
 ############################################################################################################
 # UI configurations
 ############################################################################################################
 
 st.set_page_config(page_title="Home - Clip Model Prototype",
-                   page_icon=":desktop_computer:",
+                   #page_icon=":desktop_computer:",
                    initial_sidebar_state="auto",
                    layout="wide"             
                    )
@@ -201,7 +257,7 @@ with st.sidebar:
      st.markdown('<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.2;"><strong>Contact us: <br></br>Isaac Bravo:</strong> <a href="https://www.linkedin.com/in/isaac-bravo/"><img src="https://openvisualfx.com/wp-content/uploads/2019/10/linkedin-icon-logo-png-transparent.png" width="20" height="20"></a><a href="https://github.com/IsaacBravo"><img src="https://www.pngarts.com/files/8/Github-Logo-Transparent-Background-PNG-420x236.png" width="35" height="20"></a><br></br><strong>Katharina Prasse:</strong> <a href="https://www.linkedin.com/in/katharina-prasse/"><img src="https://openvisualfx.com/wp-content/uploads/2019/10/linkedin-icon-logo-png-transparent.png" width="20" height="20"></a><a href="https://github.com/KathPra"><img src="https://www.pngarts.com/files/8/Github-Logo-Transparent-Background-PNG-420x236.png" width="35" height="20"></a></p>', 
                  unsafe_allow_html=True)
      st.divider()
-     sidebar_title = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 15px; letter-spacing: -0.005em; line-height: 1.5;">This page is part of the ClimateVision project, academic initiative between the Technical University of Munich and the University of Mannheim. This project is founding by the Bundesministerium für Bildung und Forschung and the European Union. If you want to know more about the project, please check our website <a href="https://web.informatik.uni-mannheim.de/climatevisions/">here.</a></p>'
+     sidebar_title = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 15px; letter-spacing: -0.005em; line-height: 1.5;">This page is part of the ClimateVision project, academic initiative between the Technical University of Munich and the University of Mannheim. This project is founding by the Bundesministerium für Forschung, Technologie und Raumfahrt (BMFTR) and the European Union (EU). If you want to know more about the project, please check our website <a href="https://web.informatik.uni-mannheim.de/climatevisions/">here.</a></p>'
      st.markdown(sidebar_title, unsafe_allow_html=True)
 
 ############################################################################################################
@@ -210,7 +266,7 @@ with st.sidebar:
 
 icon.show_icon(":desktop_computer:")
 
-st.header(":blue[Welcome to ClimateVision Project! 👋]")
+st.header(":blue[Welcome to the ClimateVision Project! 👋]")
 original_header = '<p style="font-family:Source Sans Pro; text-align:justify; color:#1F66CB; font-size: 18px; letter-spacing: -0.005em; line-height: 1.5; background-color:#EBF2FC; padding:25px; border-radius:10px; border:1px solid graylight;">This page provides users with the ability to upload an image and receive predictions from OpenCLIP model, an open-source implementation of OpenAI\'s CLIP model. The CLIP model, short for "Contrastive Language-Image Pre-training," is a powerful artificial intelligence model capable of understanding both images and text. Using this model, the application predicts the class or content depicted in the uploaded image based on its visual features and any accompanying text description. By leveraging the CLIP model`s unique ability to analyze images in conjunction with text, users can gain insights into what the model perceives from both modalities, offering a richer understanding of the image content.</p>'
 st.markdown(original_header, unsafe_allow_html=True)
 
@@ -236,16 +292,9 @@ selected_option = st.selectbox('', model_options)
 # Load the model
 device = "cuda" if torch.cuda.is_available() else "cpu"
 # open_clip.list_pretrained()
-if selected_option == 'ViT-B':
-    model, _, preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='laion2b_s34b_b79k')
-    tokenizer = open_clip.get_tokenizer('ViT-B-32')
-if selected_option == 'ViT-L':
-    model, _, preprocess = open_clip.create_model_and_transforms('ViT-L-14', pretrained='laion2b_s32b_b82k')
-    tokenizer = open_clip.get_tokenizer('ViT-L-14')
-if selected_option == 'ViT-H':
-    model, _, preprocess = open_clip.create_model_and_transforms('ViT-H-14', pretrained='laion2b_s32b_b79k') 
-    tokenizer = open_clip.get_tokenizer('ViT-H-14')
-model.eval()
+model, preprocess, tokenizer = load_model(selected_option)
+
+cifar100_text_features = get_cifar100_text_features(model, tokenizer, device, cifar100_classes)
 
 ############################################################################################################
 # UI - User input and predictions # USER EXAMPLE 1
@@ -303,11 +352,14 @@ styles_dict = [
 # Prepare the inputs -- EXAMPLE 1
 ############################################################################################################
 
-image = Image.open('climate_image.jpeg')
 image_path = 'climate_image.jpeg'
+image = Image.open(image_path)
 image_width = 450
 
-result_df = process_image(image_path)
+result_df = process_uploaded_image(
+        open(image_path, "rb").read(),
+        model, preprocess, cifar100_text_features, device
+    )
 
 # UI - Original image and predictions (pre-loaded image)
 grid_image, grid_predictions = st.columns([3,3])
@@ -316,7 +368,7 @@ with grid_image:
     example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
     st.markdown(example_text_1, unsafe_allow_html=True)
     # st.image(image, caption='Pre-loaded Image', width=image_width)
-    st.image(image, caption='Pre-loaded Image', use_column_width='always')
+    st.image(image, caption='Pre-loaded Image',  use_container_width ='always')
 
 with grid_predictions:
     example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions &#127919;</p>'
@@ -361,7 +413,7 @@ if uploaded_file_example_1 is not None:
         example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
         st.markdown(example_text_1, unsafe_allow_html=True)
         # st.image(image_user, caption='Uploaded Image', width=image_width)
-        st.image(image_user, caption='Uploaded Image', use_column_width='always')
+        st.image(image_user, caption='Uploaded Image',  use_container_width ='always')
     with grid_predictions:
         result = process_image(file_path)
         example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions &#127919;</p>'
@@ -398,7 +450,7 @@ with grid_image:
     example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
     st.markdown(example_text_1, unsafe_allow_html=True)
     # st.image(image_2, caption='Pre-loaded Image', width=image_width)
-    st.image(image_2, caption='Pre-loaded Image', use_column_width='always')
+    st.image(image_2, caption='Pre-loaded Image', use_container_width ='always')
 
 with grid_predictions_1:
     example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Single-Label Predictions &#127919;</p>'
@@ -455,7 +507,7 @@ if uploaded_file_example_2 is not None:
         example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
         st.markdown(example_text_1, unsafe_allow_html=True)
         # st.image(image_user_example_2, caption='Uploaded Image', width=image_width)
-        st.image(image_user_example_2, caption='Uploaded Image', use_column_width='always')
+        st.image(image_user_example_2, caption='Uploaded Image',  use_container_width ='always')
     with grid_predictions:
         if labels_user:
             example_text_3 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions &#127919;</p>'

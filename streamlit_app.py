@@ -294,8 +294,11 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # open_clip.list_pretrained()
 model, preprocess, tokenizer = load_model(selected_option)
 
-cifar100_text_features = get_cifar100_text_features(model, tokenizer, device, cifar100_classes)
-
+if os.path.exists("cifar100_classes_emb.torch"):
+    cifar100_text_features = torch.load("cifar100_classes_emb.torch", weights_only = True)
+else:
+    cifar100_text_features = get_cifar100_text_features(model, tokenizer, device, cifar100_classes)
+    torch.save(cifar100_text_features, "cifar100_classes_emb.torch")
 ############################################################################################################
 # UI - User input and predictions # USER EXAMPLE 1
 ############################################################################################################
@@ -368,7 +371,7 @@ with grid_image:
     example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
     st.markdown(example_text_1, unsafe_allow_html=True)
     # st.image(image, caption='Pre-loaded Image', width=image_width)
-    st.image(image, caption='Pre-loaded Image',  use_container_width ='always')
+    st.image(image, caption='Pre-loaded Image',  width ='stretch')
 
 with grid_predictions:
     example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions &#127919;</p>'
@@ -413,7 +416,7 @@ if uploaded_file_example_1 is not None:
         example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
         st.markdown(example_text_1, unsafe_allow_html=True)
         # st.image(image_user, caption='Uploaded Image', width=image_width)
-        st.image(image_user, caption='Uploaded Image',  use_container_width ='always')
+        st.image(image_user, caption='Uploaded Image', width ='stretch')
     with grid_predictions:
         result = process_image(file_path)
         example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions &#127919;</p>'
@@ -450,7 +453,7 @@ with grid_image:
     example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
     st.markdown(example_text_1, unsafe_allow_html=True)
     # st.image(image_2, caption='Pre-loaded Image', width=image_width)
-    st.image(image_2, caption='Pre-loaded Image', use_container_width ='always')
+    st.image(image_2, caption='Pre-loaded Image', width ='stretch')
 
 with grid_predictions_1:
     example_text_2 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Single-Label Predictions &#127919;</p>'
@@ -507,7 +510,7 @@ if uploaded_file_example_2 is not None:
         example_text_1 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Original Image &#128247;</p>'
         st.markdown(example_text_1, unsafe_allow_html=True)
         # st.image(image_user_example_2, caption='Uploaded Image', width=image_width)
-        st.image(image_user_example_2, caption='Uploaded Image',  use_container_width ='always')
+        st.image(image_user_example_2, caption='Uploaded Image', width ='stretch')
     with grid_predictions:
         if labels_user:
             example_text_3 = '<p style="font-family:Source Sans Pro; color:#2368CC; font-size: 20px; letter-spacing: -0.005em; line-height: 1.5;">Model Predictions &#127919;</p>'
